@@ -70,3 +70,7 @@ After training you get:
 Works fine for basic linear regression. There are a few TODOs in the code:
 - Add graphical output
 - Replace some loops with matrix
+
+## License
+
+Public domain.
