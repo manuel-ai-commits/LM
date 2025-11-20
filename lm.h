@@ -34,10 +34,10 @@
 
 
 #define CSV_IMPLEMENTATION
-#include "libcsv/csv.h"
+#include "deps/libcsv/csv.h"
 
 #define MAT_IMPLEMENTATION
-#include "mat.h"
+#include "deps/mat/mat.h"
 
 
 typedef struct {
