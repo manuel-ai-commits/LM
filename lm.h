@@ -1,7 +1,7 @@
-//TODO: Understand why with low LR it goes to hell, with 1e-04 is ok LOL
+//TODO: Intrdouce graphical representations
 //TODO: Change for to matrix dot products
+//TODO: Implement a way to standardaze matrices in "mat.h"
 //TODO: Case in which the Y and X are in different CSVs
-//TODO: Change the LM struct and split it in two structs
 // This is a header guard. It prevents multiple inclusion of this header file during compilation.
 #ifndef LM_H_
 #define LM_H_
@@ -72,18 +72,13 @@ void lm_inf(Mat *Y_hat, LM lm, Mat X);
 void grad_betas(Mat *grad, Mat X, Mat Y, Mat Y_hat);
 void lm_loss(metrics *m_met, Mat X, Mat Y, Mat Y_hat);
 void lm_train(LM *lm, metrics *m_met, Mat X, Mat Y, float lr, size_t epochs);
-#endif // NN_H_
+#endif 
 
 
 
-// C part
 #ifdef LM_IMPLEMENTATION
 /*
-    Given an array with each neuron per layer, including the initial one
-    and the number of layers in total, including the input.
-
-    It returns a completely allocated neural network structure with weights
-    and biases correctly formatted.
+    Cousin of "malloc" for allocating the LM struct
 */
 LM lm_alloc(size_t n_feat) {
     LM lm;
@@ -98,6 +93,9 @@ LM lm_alloc(size_t n_feat) {
     return lm;
 }
 
+/*
+    Cousin of "malloc" for allocating the metrics struct
+*/
 metrics metrics_alloc(size_t n_feat) {
     metrics m_met;
     m_met.residuals = LM_MALLOC(sizeof(*m_met.residuals));
@@ -108,8 +106,11 @@ metrics metrics_alloc(size_t n_feat) {
 }
 
 //TODO: Maybe swap from checking header to checking heaer row if present
+/*
+    It uses the "libcsv" library to load the csv and turn into matrices using my lib "mac.h"
+*/
 Mat *init_data(LM lm, CSV_BUFFER buf) {
-    //TODO: ASSERT WIDTHS ARE THE SAME
+    //ASSERT WIDTHS ARE THE SAME across the whole data
     size_t temp = CSV_COLS(buf, 0);
     for (size_t i = 1; i < CSV_ROWS(buf); i++) {
         assert(CSV_COLS(buf, i) == temp);
@@ -206,7 +207,7 @@ void lm_rand(LM lm, float low, float high) {
 }
 
 /*
-    Compute the predicted response 
+    Compute the predicted response in place.
 */
 void lm_inf(Mat *Y_hat, LM lm, Mat X) {
     assert(X.cols == lm.B->cols);
@@ -218,6 +219,9 @@ void lm_inf(Mat *Y_hat, LM lm, Mat X) {
     }
 }
 
+/*
+    Fills the struct 'metrics' with all the metrics useful to revise when fitting an LM, both during traing and testing. In place operation.
+*/
 void lm_loss(metrics *m_met, Mat X, Mat Y, Mat Y_hat) {
     // Ensure the sizes are equal, asserting separately for clarity
     LM_ASSERT(m_met->residuals->cols == Y.cols);
@@ -257,6 +261,9 @@ void lm_loss(metrics *m_met, Mat X, Mat Y, Mat Y_hat) {
     m_met->adj_r_s = 1.0 - (1.0 - m_met->r_s) * ((double)(n - 1) / (double)m_met->dof);
 }
 
+/*
+    Compute the gradient of the betas, needed in 'lm_train' to apply the gradient descend
+*/
 void grad_betas(Mat *grad, Mat X, Mat Y, Mat Y_hat){
     Mat res = mat_alloc(Y.rows, Y.cols);
     mat_copy(res, Y);
@@ -267,6 +274,13 @@ void grad_betas(Mat *grad, Mat X, Mat Y, Mat Y_hat){
     mat_release(&res);
 }
 
+/*
+    Train the linear model:
+
+    * 1. Compute the predicted response
+    * 2. Use the predicted response to wiggle the Betas, thanks to gradient
+    * 3. Repeat!
+*/
 void lm_train(LM *lm, metrics *m_met, Mat X, Mat Y, float lr, size_t epochs){
     Mat Y_hat = mat_alloc(1, Y.cols);
     Mat grad = mat_alloc(1, lm->B->cols);
@@ -285,4 +299,4 @@ void lm_train(LM *lm, metrics *m_met, Mat X, Mat Y, float lr, size_t epochs){
     // Compute loss
     lm_loss(m_met, X, Y, Y_hat);
 }
-#endif // NN_IMPLEMENTATION
+#endif
