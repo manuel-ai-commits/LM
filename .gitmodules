@@ -1,0 +1,6 @@
+[submodule "deps/libcsv"]
+	path = deps/libcsv
+	url = https://github.com/manuel-ai-commits/libcsv.git
+[submodule "deps/mat"]
+	path = deps/mat
+	url = https://github.com/manuel-ai-commits/MAT.git
