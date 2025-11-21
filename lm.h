@@ -60,18 +60,18 @@ typedef struct {
 
 #define ARRAY_LEN(xs) sizeof(xs)/sizeof(xs[0])
 
-LM lm_alloc(size_t n_feat);
-metrics metrics_alloc(size_t n_feat);
-Mat *init_data(LM lm, CSV_BUFFER buf);
-void lm_print(LM lm, const char *name);
-void metrics_print(metrics m, const char *name);
+LM *lm_alloc(size_t n_feat);
+metrics *metrics_alloc(size_t n_feat);
+Mat **init_data(LM *lm, CSV_BUFFER *buf);
+void lm_print(const LM *lm, const char *name);
+void metrics_print(const metrics *m, const char *name);
 #define LM_PRINT(lm) lm_print(lm, #lm); // A macro for prinitng the whole structure of a neural network
 #define METRICS_PRINT(m) metrics_print(m, #m); // A macro for prinitng the whole structure of a neural network
 void LM_rand(LM lm, float low, float high);
-void lm_inf(Mat *Y_hat, LM lm, Mat X);
-void grad_betas(Mat *grad, Mat X, Mat Y, Mat Y_hat);
-void lm_loss(metrics *m_met, Mat X, Mat Y, Mat Y_hat);
-void lm_train(LM *lm, metrics *m_met, Mat X, Mat Y, float lr, size_t epochs);
+void lm_inf(Mat *Y_hat, const LM *lm, Mat *X);
+void grad_betas(Mat *grad, Mat *X, Mat *Y, Mat *Y_hat);
+void lm_loss(metrics *m_met, Mat *X, Mat *Y, Mat *Y_hat);
+void lm_train(LM *lm, metrics *m_met, Mat *X, Mat *Y, float lr, size_t epochs);
 #endif 
 
 
@@ -80,28 +80,29 @@ void lm_train(LM *lm, metrics *m_met, Mat X, Mat Y, float lr, size_t epochs);
 /*
     Cousin of "malloc" for allocating the LM struct
 */
-LM lm_alloc(size_t n_feat) {
-    LM lm;
-
-    lm.B = LM_MALLOC(sizeof(*lm.B));
-    LM_ASSERT(lm.B != NULL);
-    lm.name_features = LM_MALLOC(sizeof(*lm.name_features));
-    LM_ASSERT(lm.name_features != NULL);
-    lm.name_response = LM_MALLOC(sizeof(*lm.name_response));
-    LM_ASSERT(lm.name_response != NULL);
-    *lm.B = mat_alloc(1, n_feat);
+LM *lm_alloc(size_t n_feat) {
+    LM *lm = LM_MALLOC(sizeof(LM)); 
+    LM_ASSERT(lm != NULL);
+    
+    lm->n_features = n_feat;
+    lm->B = mat_alloc(1, n_feat);
+    
+    lm->name_features = LM_MALLOC((n_feat + 1) * sizeof(char*));
+    LM_ASSERT(lm->name_features != NULL);
+    
+    lm->name_response = LM_MALLOC(sizeof(*lm->name_response));
+    LM_ASSERT(lm->name_response != NULL);
+    
     return lm;
 }
 
 /*
     Cousin of "malloc" for allocating the metrics struct
 */
-metrics metrics_alloc(size_t n_feat) {
-    metrics m_met;
-    m_met.residuals = LM_MALLOC(sizeof(*m_met.residuals));
-    LM_ASSERT(m_met.residuals != NULL);
+metrics *metrics_alloc(size_t obs) {
+    metrics *m_met = LM_MALLOC(sizeof(metrics)); 
 
-    *m_met.residuals = mat_alloc(1, n_feat);
+    m_met->residuals = mat_alloc(1, obs);
     return m_met;
 }
 
@@ -109,7 +110,7 @@ metrics metrics_alloc(size_t n_feat) {
 /*
     It uses the "libcsv" library to load the csv and turn into matrices using my lib "mac.h"
 */
-Mat *init_data(LM lm, CSV_BUFFER buf) {
+Mat **init_data(LM *lm, CSV_BUFFER *buf) {
     //ASSERT WIDTHS ARE THE SAME across the whole data
     size_t temp = CSV_COLS(buf, 0);
     for (size_t i = 1; i < CSV_ROWS(buf); i++) {
@@ -120,29 +121,29 @@ Mat *init_data(LM lm, CSV_BUFFER buf) {
     // ============ FILL THE NAMES IN LM ============
     // Fill the response 
     if (HEADER){
-        lm.name_response = CSV_ENTRY(buf, HEADER_ROW, RESPONSE_COL);
+        lm->name_response = CSV_ENTRY(buf, HEADER_ROW, RESPONSE_COL);
     }
-    csv_remove_field(&buf, HEADER_ROW, RESPONSE_COL);
+    csv_remove_field(buf, HEADER_ROW, RESPONSE_COL);
     // Fill the features names
-    lm.name_features[0] = "Intercept";
+    lm->name_features[0] = "Intercept";
     if (HEADER) {
         for (size_t j = 0; j < CSV_COLS(buf, HEADER_ROW); j++) {
-            lm.name_features[j+1] =  CSV_ENTRY(buf, HEADER_ROW, j);
+            lm->name_features[j+1] =  CSV_ENTRY(buf, HEADER_ROW, j);
         }
     } 
-    csv_remove_row(&buf, HEADER_ROW);
+    csv_remove_row(buf, HEADER_ROW);
     
     // ============ FILL Y ============
-    Mat Y = mat_alloc(1, CSV_ROWS(buf));
+    Mat *Y = mat_alloc(1, CSV_ROWS(buf));
     // Fill the response variable
     for (size_t i = 0; i < CSV_ROWS(buf); i++) {
         MAT_AT(Y, 0, i) = atof(CSV_ENTRY(buf, i, RESPONSE_COL));
     }
     // Delete the field already allocated, to not have problems during the other loops
-    csv_remove_col(&buf, RESPONSE_COL);
+    csv_remove_col(buf, RESPONSE_COL);
     
     // ============ FILL X ============
-    Mat X = mat_alloc(CSV_ROWS(buf), CSV_COLS(buf,0)+1);
+    Mat *X = mat_alloc(CSV_ROWS(buf), CSV_COLS(buf,0)+1);
     // FILL THE INTERCEPT
     for (size_t i = 0;i < CSV_ROWS(buf); i++) {
         MAT_AT(X, i, 0) = 1.0;
@@ -153,7 +154,7 @@ Mat *init_data(LM lm, CSV_BUFFER buf) {
             MAT_AT(X, i, j+1) = atof(CSV_ENTRY(buf, i, j));
         }
     }
-    Mat *out = MAT_MALLOC(2 * sizeof(Mat));
+    Mat **out = MAT_MALLOC(2 * sizeof(Mat*));
     if (!out) {
         return NULL;
     }
@@ -178,43 +179,43 @@ void print_value_zu(size_t value, const char *name){
 /*
     Print the LM parameters
 */
-void lm_print(LM lm, const char *name) {
+void lm_print(const LM *lm, const char *name) {
     printf("%s = [\n", name);
-    mat_print(*lm.B, "B", 4);
+    mat_print(lm->B, "B", 4);
     printf("]\n");
 }
 
 /*
     Print the metrics results
 */
-void metrics_print(metrics m_met, const char *name) {
+void metrics_print(const metrics *m_met, const char *name) {
     printf("%s = [\n", name);
-    mat_print(*m_met.residuals, "Residuals", 4);
-    print_value_f(m_met.rss, "RSS");
-    print_value_f(m_met.tss, "TSS");
-    print_value_f(m_met.mse, "MSE");
-    print_value_f(m_met.r_s, "R^2");
-    print_value_f(m_met.adj_r_s, "Adj R^2");
-    print_value_zu(m_met.dof, "Degrees of Freedom");
+    mat_print(m_met->residuals, "Residuals", 4);
+    print_value_f(m_met->rss, "RSS");
+    print_value_f(m_met->tss, "TSS");
+    print_value_f(m_met->mse, "MSE");
+    print_value_f(m_met->r_s, "R^2");
+    print_value_f(m_met->adj_r_s, "Adj R^2");
+    print_value_zu(m_met->dof, "Degrees of Freedom");
     printf("]\n");
 }
 
 /*
     Randomize the betas
 */
-void lm_rand(LM lm, float low, float high) {
-    mat_rand(*lm.B, low, high);
+void lm_rand(LM *lm, float low, float high) {
+    mat_rand(lm->B, low, high);
 }
 
 /*
     Compute the predicted response in place.
 */
-void lm_inf(Mat *Y_hat, LM lm, Mat X) {
-    assert(X.cols == lm.B->cols);
-    mat_zeros(*Y_hat);
-    for (size_t i = 0; i < X.rows; i++){
-        for (size_t j = 0; j < X.cols; j++){
-            MAT_AT(*Y_hat, 0, i) += MAT_AT(*lm.B, 0, j) * MAT_AT(X, i, j);
+void lm_inf(Mat *Y_hat, const LM *lm, Mat *X) {
+    assert(X->cols == lm->B->cols);
+    mat_zeros(Y_hat);
+    for (size_t i = 0; i < X->rows; i++){
+        for (size_t j = 0; j < X->cols; j++){
+            MAT_AT(Y_hat, 0, i) += MAT_AT(lm->B, 0, j) * MAT_AT(X, i, j);
         }
     }
 }
@@ -222,35 +223,35 @@ void lm_inf(Mat *Y_hat, LM lm, Mat X) {
 /*
     Fills the struct 'metrics' with all the metrics useful to revise when fitting an LM, both during traing and testing. In place operation.
 */
-void lm_loss(metrics *m_met, Mat X, Mat Y, Mat Y_hat) {
+void lm_loss(metrics *m_met, Mat *X, Mat *Y, Mat *Y_hat) {
     // Ensure the sizes are equal, asserting separately for clarity
-    LM_ASSERT(m_met->residuals->cols == Y.cols);
-    LM_ASSERT(Y.cols == Y_hat.cols);
-    Mat res = mat_alloc(Y.rows, Y.cols);
+    LM_ASSERT(m_met->residuals->cols == Y->cols);
+    LM_ASSERT(Y->cols == Y_hat->cols);
+    Mat *res = mat_alloc(Y->rows, Y->cols);
     mat_copy(res, Y);
 
     // initialize n and p
-    size_t n = X.rows;
-    size_t p = X.cols;
+    size_t n = X->rows;
+    size_t p = X->cols;
     assert(n != 0);
 
     // COMPUTE RESIDUALS
     mat_nsum(res, Y_hat);
-    mat_copy(*m_met->residuals, res);
+    mat_copy(m_met->residuals, res);
     // COMPUTE RSS
     mat_copy(res, Y);
-    Mat RSS = mat_SS(res, Y_hat);
-    assert(RSS.rows == 1 && RSS.cols == 1);
+    Mat *RSS = mat_SS(res, Y_hat);
+    assert(RSS->rows == 1 && RSS->cols == 1);
     m_met->rss = MAT_AT(RSS, 0, 0);
     // COMPUTE MSE
     m_met->mse = m_met->rss/n;
     // COMPUTE TSS
     mat_copy(res, Y);
-    float Y_mean = MAT_AT(mat_row_sum(res), 0, 0)/n;
-    Mat SS = mat_SS_const(res, Y_mean);
-    assert(SS.rows == 1 && SS.cols == 1);
+    float Y_mean = MAT_AT(mat_row_collapse_sum(res), 0, 0)/n;
+    Mat *SS = mat_SS_const(res, Y_mean);
+    assert(SS->rows == 1 && SS->cols == 1);
     m_met->tss = MAT_AT(SS, 0, 0);
-    mat_release(&res);
+    mat_release(res);
     // Compute R^2
     assert(m_met->tss != 0);
     m_met->r_s = 1.0 - (m_met->rss/m_met->tss);
@@ -264,14 +265,14 @@ void lm_loss(metrics *m_met, Mat X, Mat Y, Mat Y_hat) {
 /*
     Compute the gradient of the betas, needed in 'lm_train' to apply the gradient descend
 */
-void grad_betas(Mat *grad, Mat X, Mat Y, Mat Y_hat){
-    Mat res = mat_alloc(Y.rows, Y.cols);
+void grad_betas(Mat *grad, Mat *X, Mat *Y, Mat *Y_hat){
+    Mat *res = mat_alloc(Y->rows, Y->cols);
     mat_copy(res, Y);
     mat_nsum(res, Y_hat);
 
-    mat_dot(*grad, res, X);
-    mat_prod_const(*grad, 2.0f / Y.cols);
-    mat_release(&res);
+    mat_dot(grad, res, X);
+    mat_prod_const(grad, 2.0f / Y->cols);
+    mat_release(res);
 }
 
 /*
@@ -281,22 +282,70 @@ void grad_betas(Mat *grad, Mat X, Mat Y, Mat Y_hat){
     * 2. Use the predicted response to wiggle the Betas, thanks to gradient
     * 3. Repeat!
 */
-void lm_train(LM *lm, metrics *m_met, Mat X, Mat Y, float lr, size_t epochs){
-    Mat Y_hat = mat_alloc(1, Y.cols);
-    Mat grad = mat_alloc(1, lm->B->cols);
+void lm_train(LM *lm, metrics *m_met, Mat *X, Mat *Y, float lr, size_t epochs){
+    Mat *Y_hat = mat_alloc(1, Y->cols);
+    Mat *grad = mat_alloc(1, lm->B->cols);
 
 
     for(size_t i = 0; i<epochs; i++){
         // Make inference
-        lm_inf(&Y_hat, *lm, X);
+        lm_inf(Y_hat, lm, X);
         // Compute gradient of the betas
-        grad_betas(&grad, X, Y, Y_hat);
+        grad_betas(grad, X, Y, Y_hat);
         // Apply learning rate
         mat_prod_const(grad, lr);
         // Compute Gradient Descend
-        mat_sum(*lm->B, grad);
+        mat_sum(lm->B, grad);
     }
     // Compute loss
     lm_loss(m_met, X, Y, Y_hat);
 }
+
+
+/*
+    Solves for Beta using the Normal Equation: B = (X^T * X)^-1 * X^T * Y
+    Complexity: O(P^3) due to inversion.
+*/
+void OLS(LM *lm, const Mat *X, const Mat *Y) {
+    //Calculate X Transpose (X^T)
+    Mat *Xt = mat_trans(X);
+    Mat *Yt = mat_trans(Y);
+    
+    // Calculate Gram Matrix (XtX = X^T * X)
+    // Result is PxP square matrix
+    Mat *XtX = mat_alloc(Xt->rows, X->cols);
+    mat_dot(XtX, Xt, X);
+    
+    // Inverse of Gram Matrix (XtX_inv = (X^T * X)^-1)
+    // Uses your Gauss-Jordan implementation
+    Mat *XtX_inv = mat_inverse_GJ(XtX);
+    
+    // Calculate Moment Vector (XtY = X^T * Y)
+    // Result is Px1 column vector
+    Mat *XtY = mat_alloc(Xt->rows, Yt->cols);
+    mat_dot(XtY, Xt, Yt);
+    
+    // Calculate Final Betas: (XtX_inv) * (XtY)
+    // Result is Px1 (Column vector)
+    Mat *B_new = mat_alloc(XtX_inv->rows, XtY->cols);
+    mat_dot(B_new, XtX_inv, XtY);
+
+    // Update LM Struct
+    Mat *B_row = mat_trans(B_new);
+    
+    // Ensure dimensions match before copying
+    LM_ASSERT(lm->B->rows == B_row->rows); 
+    LM_ASSERT(lm->B->cols == B_row->cols);
+    
+    mat_copy(lm->B, B_row);
+
+    // 7. Cleanup Memory
+    mat_release(Xt);
+    mat_release(XtX);
+    mat_release(XtX_inv);
+    mat_release(XtY);
+    mat_release(B_new);
+    mat_release(B_row);
+}
+
 #endif
