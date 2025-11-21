@@ -339,7 +339,7 @@ void OLS(LM *lm, const Mat *X, const Mat *Y) {
     
     mat_copy(lm->B, B_row);
 
-    // 7. Cleanup Memory
+    // Cleanup Memory
     mat_release(Xt);
     mat_release(XtX);
     mat_release(XtX_inv);
